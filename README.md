@@ -1,5 +1,5 @@
 # Snake game
-A simple snake game in ARM Assembly for Raspberry Pi.
+A simple snake game in pure ARM Assembly for Raspberry Pi, no C functions called.
 
 ![Snake game](https://github.com/haperofi/asm_snake/blob/main/giffed_snake.gif)
 
