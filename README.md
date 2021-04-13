@@ -6,14 +6,10 @@ A simple snake game in ARM Assembly for Raspberry Pi.
 You move with wasd as directions and eat different bugs. As you progress, your snake grows
 in length, until you collide with a wall or yourself.
 
-Needs Ncurses library, get it using:
-```
-sudo apt-get install libncurses5-dev libncursesw5-dev 
-```
 Compile with:
 ```
 as mato.s -o temp.o
-gcc temp.o -o mato -lncurses
+gcc temp.o -o mato
 ```
 and run:
 ```
