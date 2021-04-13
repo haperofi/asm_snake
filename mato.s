@@ -2,8 +2,6 @@
 
 .align 4
 space: .asciz "   "
-// Colors from: https://en.wikipedia.org/wiki/ANSI_escape_code
-// Escape char for Raspberry Pi is \033
 empty: .asciz "\033[38;5;130m.\033[0m"	// brown .
 snake: .asciz "\033[32m@\033[0m"	// green @
 tail: .asciz "\033[32mo\033[0m"		// green 0
@@ -11,38 +9,42 @@ border: .asciz "\033[33m#\033[0m"	// yellow #
 bug1: .asciz "\033[38;5;199m\244\033[0m"// pink currency sing
 bug2: .asciz "\033[38;5;207m~\033[0m"	// pink ~
 bug3: .asciz "\033[38;5;165m\272\033[0m"// pink circle
-clear_screen: .asciz "\033[2J"
+clear_screen: .asciz "\033[2J\n"
 move_up: .asciz "\033[1A"
 hide_cursor: .asciz "\033[?25l"
 show_cursor: .asciz "\033[?25h"
 endl: .asciz "\n"
-game_over: .asciz "\033[1A Game Over. Score: %d\n"
+game_over: .asciz "\033[1A Game Over. Score: "
 .align 4
-map: .skip 600  // mapxlen*mapylen*4
-dx: .word 1
+map: .skip 600  		// mapxlen*mapylen*4
+dx: .word 1			// snake directions
 dy: .word 0
-headx: .word 3
+headx: .word 3			// snake head coords
 heady: .word 3
-max_len: .word 0
-random_seed: .word 0x1234
-
+max_len: .word 0		// snake length
+random_seed: .word 0x1234	// updated from gettimeofday
+rw_buffer: .skip 100
+termios: .skip 100		// terminal input configs
+saved_termios: .skip 100
+delay_ticks: .word 230000000	// game speed
 .equ MAPXLEN, 14
-.equ MAPYLEN, 9
+.equ MAPYLEN, 8
 
 .text
 .global main
 
 ///////////////////////////////////////////////
 ///////////////////  MAIN  ////////////////////
+///////////////////////////////////////////////
 main:
 	push {r4, lr}
 
+	bl save_termios
 	bl init_random_seed
+	bl initialize_map
 
         ldr r0, =hide_cursor
-        bl printf
-
-	bl initialize_map
+        bl output
 
 game_loop:
 
@@ -54,24 +56,31 @@ game_loop:
 
 	bl check_keypress		// check if key was pressed
 					// update dx and dy if needed
-
 	b game_loop			// loop until collision
 
 the_end:
 	ldr r0, =game_over
-	ldr r1, =max_len
-	ldr r1, [r1]
-	bl printf
-	bl getchar			// wait for any key
+	bl output
+	ldr r0, =max_len
+	ldr r0, [r0]
+	bl output_int
+	ldr r0, =endl
+	bl output
+
+	bl kbhit		// wait for any key
+	bl cooked_mode		// just to be sure, restore termios
+
+        ldr r0, =endl
+        bl output
 	ldr r0, =show_cursor
-	bl printf
-	ldr r0, =clear_screen
-	bl printf
+	bl output
 	pop {r4, lr}
 	bx lr
 
+///////////////////////////////////////////////////
 /////////////// END MAIN //////////////////////////
 ///////////////////////////////////////////////////
+
 
 
 
@@ -131,7 +140,7 @@ update_and_print_map:
 	push {r4, r5, r6, r7, r8, lr}
 	ldr r6, =map
         ldr r0, =clear_screen
-        bl printf
+        bl output
 
         mov r5, #0
 mapy_loop:
@@ -140,11 +149,11 @@ mapy_loop:
         beq end_map_loop
         add r5, r5, #1
 	ldr r0, =space
-	bl printf
+	bl output
 mapx_loop:
         cmp r4, #MAPXLEN
         ldreq r0, =endl
-        bleq printf
+        bleq output
         cmp r4, #MAPXLEN
         beq mapy_loop
         add r4, r4, #1
@@ -177,14 +186,14 @@ mapx_loop:
         strgt r0, [r6]
         ldrgt r0, =empty
 
-        bl printf               // print the point
+        bl output               // print the point
 
         add r6, r6, #4          // next  point in map
         b mapx_loop
 
 end_map_loop:
 	ldr r0, =endl
-	bl printf
+	bl output
 	pop {r4, r5, r6, r7, r8, lr}
 	bx lr
 ///////////////////////////////////////////////
@@ -197,27 +206,36 @@ end_map_loop:
 check_keypress:
 	push {r4, r5, r6, lr}
 
-        bl initscr              // ncurses init functions
-        bl noecho               //
-        bl cbreak               //
-        mov r0, #500            // wait 500ms for keypress
-        bl timeout              //
-        bl getch                // ncurses function: get non-blocking
-                                // keypress, store in r0
+      	bl raw_mode		// key presses are not buffered
+      	bl delay
+      	bl input
+	ldr r4, [r0]
+      	bl cooked_mode		// return to normal mode immediately
+				// this is overkill, but helps when
+				// debugging
 
-        cmp r0, #0x73           // 'w'
+      	//bl initscr            // For A LOT easier implementation,
+        //bl noecho             // one could use ncurses C-library
+        //bl cbreak             //
+        //mov r0, #500          // wait 500ms for keypress
+        //bl timeout            //
+        //bl getch              // ncurses function: get non-blocking
+ 	//mov r4, r0            // keypress, store in r0
+	//bl endwin		//
+
+	cmp r4, #0x73           // 'w'
         moveq r0, #1
         beq update_dxdy
 
-        cmp r0, #0x61           // 'a'
+        cmp r4, #0x61           // 'a'
         moveq r0, #2
         beq update_dxdy
 
-        cmp r0, #0x77           // 's'
+        cmp r4, #0x77           // 's'
         moveq r0, #3
         beq update_dxdy
 
-        cmp r0, #0x64           // 'd'
+        cmp r4, #0x64           // 'd'
         moveq r0, #4
         beq update_dxdy
 
@@ -246,7 +264,6 @@ update_dxdy:
 	str r5, [r2]
 
 end_check_keypress:
-        bl endwin               // ncurses end function
 	pop {r4,r5, r6, lr}
 	bx lr
 //////////////////////////////////////
@@ -394,10 +411,318 @@ get_random:
 init_random_seed:
         push {r7, lr}
         ldr r0, =random_seed
-        mov r7, #0x00004e
+        mov r7, #0x00004e	// syscall for gettimeofday
         svc #0
 
         pop {r7, lr}
         bx lr
 /////////////////////////////////////
+
+
+////// OUTPUT //////////////////////
+// Input: r0, address of string to print
+// Output: none, prints to stdout
+output:
+	push {r4, r6, r7, lr}
+	mov r4, r0		// store orig addr of string
+	mov r3, #0
+count_loop:			// count chars in the string
+	ldrb r1, [r0], #1	// each char is one byte
+	cmp r1, #0		// each string must be null-ended
+	beq next_print
+	addne r3, r3, #1
+	b count_loop
+next_print:
+	mov r0, #1              // stdout
+    	mov r1, r4	        // address of the string
+    	mov r2, r3             	// string length
+    	mov r7, #4              // syscall for 'write'
+    	svc #0                  // software interrupt
+	pop {r4, r6, r7, lr}
+	bx lr
+////////////////////////////////////
+
+
+////// INPUT ///////////////////////
+input:
+	push {r4, r6, r7, lr}
+	ldr r4, =rw_buffer
+	mov r1, #0
+	str r1, [r4]
+	str r1, [r4, #+4]
+
+	mov r0, #0              // stdin
+        mov r1, r4              // address of the string
+        mov r2, #1             // string length = 1
+        mov r7, #3              // syscall for 'write'
+        svc #0                  // software interrupt
+
+	mov r0, r4		//return address of string
+
+end_input:
+	nop
+	pop {r4, r6, r7, lr}
+        bx lr
+////////////////////////////////////////////////
+
+
+////// OUTPUT INTEGER TO PRINT AS STRING ///////
+// Input: r0, 32 bit positive integer
+// Output: none, prints r0 to stdout as decimal
+output_int:
+	push {r4, r5, r6, lr}
+	mov r4, r0
+    	mov r5, #8		// word is 8 x 4 bits
+	mov r6, #0		// carry
+	ldr r3, =rw_buffer	// buffer to write string
+	add r3, r3, #7		// start writing from end
+output_int_loop:
+    	// Take least significant 4 bits from r4 into r0, loop 8 times
+    	mov r0, r4, lsl #28
+	mov r0, r0, lsr #28
+
+	cmp r6, #0		// add carry if previous round >9
+	addgt r0, r0, #1
+	movgt r6, #0
+
+	cmp r0, #9		// check if >9, if so mark carry
+	subgt r0, r0, #10
+	movgt r6, #1
+
+    	mov r4, r4, lsl #4	// Shift r4 for next time
+
+    	// For each nibble (now in r0) convert to ASCII
+    	add r0, r0, #48
+	strb r0, [r3], #-1
+
+    	sub r5, r5, #1		// decrease loop counter
+	cmp r5, #0
+    	bne output_int_loop
+
+	ldr r0, =rw_buffer	// reset to start
+	mov r2, #6
+output_int_loop3:		// skip leading zeroes (max 7)
+	ldrb r1, [r0]
+	cmp r1, #0x30		//= "0" in ascii
+	addeq r0, r0, #1
+	bne output_int_end
+	subs r2, r2, #1
+	bmi output_int_end	//if last number is also 0, print it
+	b output_int_loop3
+output_int_end:
+	bl output
+
+	pop {r4, r5, r6, lr}
+	bx lr
+////////////////////////////////////////////
+
+
+////////DELAY///////////////////////////
+// Input, Output: none
+// Delay program for delay_ticks loop time
+delay:
+        ldr r0, =delay_ticks
+        ldr r0, [r0]
+        mov r1, #0
+delay_loop:
+        cmp r1, r0
+        add r1, r1, #1
+        blt delay_loop
+
+        bx lr
+////////////////////////////////////////
+
+
+///// KBHIT ////////////////////////////
+// Input, Output: none
+// Wait for any key press
+kbhit:
+        push {r4, lr}
+        bl cbreak_off
+        bl input
+        bl cooked_mode
+        pop {r4, lr}
+        bx lr
+////////////////////////////////////////
+
+
+
+///////////////////////////////////////////////////////
+//        TERMIOS MANIPULATION FUNCTIONS
+// Controls how data is buffered and read from keyboard
+///////////////////////////////////////////////////////
+//struct termios {
+//    tcflag_t c_iflag;               // input mode flags
+//    tcflag_t c_oflag;               // output mode flags
+//    tcflag_t c_cflag;               // control mode flags
+//    tcflag_t c_lflag;               // local mode flags
+//    cc_t c_line;                    // line discipline
+//    cc_t c_cc[NCCS];                // control characters
+//};
+///////////////////////////////////////////////////////
+// Input, Output: none
+// Saves current termios (terminal input) configs to memory.
+// Needed so that they can be restored after config changes.
+save_termios:
+        push {r4, lr}
+        bl read_termios
+        ldr r0, =termios
+        mov r1, #0
+        ldr r2, =saved_termios
+loop_save:                      // save old configurations
+        cmp r1, #11
+        beq end_loop_save
+        ldr r3, [r0], #4
+        str r3, [r2], #4
+        add r1, r1, #1
+        b loop_save
+end_loop_save:
+	pop {r4, lr}
+	bx lr
+//////////////////////////////////////////////
+// Input, Output: none
+// Change input mode to raw mode. Input is not buffered.
+// Needed to immediate reading of data from keypresses.
+// Following instructions in:
+// https://sourceforge.net/p/hla-stdlib/mailman/hla-stdlib-talk/
+//         thread/814462.63171.qm@web65510.mail.ac4.yahoo.com/
+// Flag values from:
+// https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/
+//         linux.git/tree/include/uapi/asm-generic/termbits.h?id=HEAD
+raw_mode:
+	push {r4, r5, r6, r7, r8, lr}
+
+	bl save_termios
+
+	ldr r0, =termios
+	//termattr.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+	mov r1, #1000
+	orr r1, r1, #2
+	orr r1, r1, #0100000
+	orr r1, r1, #01
+	mvn r1, r1
+	ldr r6, [r0, #+12]
+	and r6, r6, r1
+	str r6, [r0, #+12]
+   	//termattr.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+	mov r2, #2
+	orr r2, #400
+	orr r2, #20
+	orr r2, #2000
+	mvn r2, r2
+	ldr r6, [r0]
+        and r6, r6, r2
+        str r6, [r0]
+  	//termattr.c_cflag &= ~(CSIZE | PARENB);
+	mov r3, #60
+	orr r3, #400
+	mvn r3, r3
+	ldr r6, [r0, #+8]
+        and r6, r6, r3
+   	//termattr.c_cflag |= CS8;
+	mov r4, #60
+        orr r6, r6, r4
+        str r6, [r0, #+8]
+   	//termattr.c_oflag &= ~(OPOST);
+	mvn r5, #1
+ 	ldr r6, [r0, #+4]
+        and r6, r6, r5
+        str r6, [r0, #+4]
+	//termattr.c_cc[VMIN] = 1;  // or 0 for some Unices 
+   	mov r7, #0		// needs to be 0 for Raspbian
+	strb r7, [r0, #+23]	// 16 + 1 + 6 (VMIN) 
+	//termattr.c_cc[VTIME] = 0;
+	mov r8, #0
+	strb r8, [r0, #+22]	// 16 + 1 + 5 (VTIME)
+
+	bl write_termios
+	pop {r4, r5, r6, r7, r8, lr}
+	bx lr
+/////////////////////////////////////////
+// Input, Output: none
+// Set input mode to normal mode. Needs pre-saved termios
+// structure saved in save_termios. Make sure to call this
+// at the end of program, or your terminal input is toast.
+cooked_mode:
+	push {r4, lr}
+	ldr r0, =termios
+        mov r1, #0
+        ldr r2, =saved_termios
+loop_load:                      // load old configurations
+        cmp r1, #11
+        beq end_loop_load
+        ldr r3, [r2], #4
+        str r3, [r0], #4
+        add r1, r1, #1
+	b loop_load
+end_loop_load:
+
+	bl write_termios
+	pop {r4, lr}
+	bx lr
+/////////////////////////////////////////
+// Input, Output: none
+// Don't wait for a newline in following inputs
+cbreak_off:
+        push {r7, lr}
+        bl read_termios
+
+        ldr r0, =termios
+        ldr r1, [r0, #+12]!
+	mvn r2, #0x00000002 	// NOT ICANON flag
+        and r1, r1, r2		// AND local flag
+	mvn r2, #1000		// NOT ECHO flag
+	and r1, r1, r2		// AND local flag
+        str r1, [r0]            // store back to termios+12
+
+        bl write_termios
+        pop {r7, lr}
+        bx lr
+//////////////////////////////////////////
+// Input, Output: none
+// Wait for newline to buffer input, as normal
+cbreak_on:
+	push {r7, lr}
+        bl read_termios
+
+	ldr r0, =termios
+	ldr r1, [r0, #+12]!
+	mov r2, #0x00000002	// ICANON flag
+	orr r1, r1, r2		// canonical bit ON in local mode flags
+        mov r2, #1000           // ECHO flag
+        and r1, r1, r2
+	str r1, [r0]		// store back to termios+12
+
+        bl write_termios
+	pop {r7, lr}
+	bx lr
+//////////////////////////////////////////
+// Input, Output: none
+// Make syscall to ioctl and read termios structure to memory
+read_termios:
+        push {r7, lr}
+
+	mov r0,	#0		// stdin
+	ldr r1, =#0x5401 	// READ termios parameters
+	ldr r2, =termios	// address for termios buffer
+	mov r7, #54		// syscall for ioctl 0x36
+	svc #0
+
+        pop {r7, lr}
+        bx lr
+/////////////////////////////////////////
+// Input, Output: none
+// Make syscall to ioctl and input termios structure to system
+write_termios:
+        push {r7, lr}
+
+        mov r0, #0              // stdin
+        ldr r1, =#0x5402        // WRITE termios parameters
+        ldr r2, =termios        // address for termios buffer
+        mov r7, #54             // syscall for ioctl 0x36
+        svc #0
+
+        pop {r7, lr}
+        bx lr
+//////////////////////////////////////////
 
