@@ -85,6 +85,10 @@ the_end:
 
 
 /////// MOVE AND CHECK SNAKE COLLISION ///////////
+// Input: none
+// Output: r0, =1 fatal collision, =0 no fatal collision
+// Updates headx, heady. If collides with bug, increase max_len
+// and go add a new bug
 move_and_check_collision:
 	push {r4, r5, r6, r7, r8, lr}
 	ldr r4, =map
@@ -136,6 +140,11 @@ end_move_and_coll:
 /////// PRINT AND UPDATE MAP ///////////////////
 // Input: none
 // Output: none, updates and prints map
+// Map is the main data structure for the game. Snake
+// head is 0 ('@'), tail is increasing numbers 1,2,3,.. ('O').
+// At each update step, tail is aged, and based on max_len,
+// an empty space may be drawn instead: 0 ('.'). Borders
+// are -1 ('#'). Different bugs are -2, -3, -4.
 update_and_print_map:
 	push {r4, r5, r6, r7, r8, lr}
 	ldr r6, =map
@@ -272,7 +281,7 @@ end_check_keypress:
 ////////// INIT MAP /////////////////
 // Input: none
 // Output: none
-// Initialize map values
+// Initialize map values, mainly draw borders.
 initialize_map:
 	push {r4, lr}
 
@@ -328,7 +337,7 @@ end_side_loop:
 ////// ADD NEW BUG /////////////
 // Input: none
 // Output: none
-// Adds a new bug to the map in a random location
+// Adds a new random bug to the map in a random location
 add_new_bug:
 	push {r4, r5, r6, lr}
 	ldr r4, =map
@@ -388,8 +397,8 @@ end_divide:
 // Output: r0, next random number (positive)
 // Takes random_seed from memory, updates the seed and returns it.
 // Numbers are 2's complement, so lsr should make every number positive.
-// Note that #1 shift would be enough, but we want small numbers so
-// calculating the following modulo is fast
+// Note that #1 shift would be enough for this purpose, but we want 
+// small random numbers so calculating the following modulo is fast
 get_random:
 	ldr r1, =random_seed
 	ldr r0, [r1]
@@ -444,16 +453,18 @@ next_print:
 
 
 ////// INPUT ///////////////////////
+// Input: none
+// Output: address of input string =rw_buffer
 input:
 	push {r4, r6, r7, lr}
 	ldr r4, =rw_buffer
 	mov r1, #0
 	str r1, [r4]
-	str r1, [r4, #+4]
+	str r1, [r4, #+4]	// make sure buffer is empty
 
 	mov r0, #0              // stdin
         mov r1, r4              // address of the string
-        mov r2, #1             // string length = 1
+        mov r2, #1              // string length = 1
         mov r7, #3              // syscall for 'write'
         svc #0                  // software interrupt
 
