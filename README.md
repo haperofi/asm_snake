@@ -3,8 +3,9 @@ A simple snake game in pure ARM Assembly for Raspberry Pi. No C functions called
 
 ![Snake game](https://github.com/haperofi/asm_snake/blob/main/giffed_snake.gif)
 
-You move with wasd as directions and eat different bugs. As you progress, your snake grows
-in length, until you collide with a wall or yourself.
+The snake is always moving forward, but you can change the
+direction with wasd keys to aim for different bugs, which you can eat. With each bug, your snake grows
+in length, until you are too long and collide with a wall or yourself.
 
 Compile with:
 ```
