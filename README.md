@@ -1,4 +1,4 @@
-# Snake game
+# ARM Assembly Snake Game
 A simple snake game in pure ARM Assembly for Raspberry Pi. No C functions called, I/O is done using direct system calls.
 Confirmed to run also on some Android devices (Samsung S10). Note that you should change the delay_ticks variable depending on the
 speed of the device you are running it on (e.g., 230 000 000 for Raspberry Pi 3, and 800 000 000 for S10).
