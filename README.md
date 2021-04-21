@@ -28,7 +28,8 @@ Some interesting features:
   * "getch"-type check the keyboard buffer for possible input
 
 
-To run on Android devices, you need the NDK library, follow instructions here: https://urish.medium.com/writing-your-first-android-app-in-assembly-30e8e0f8c3fe
+## Running on Android
+To run the assembly program on Android devices, you need the NDK library. Follow instructions here: https://urish.medium.com/writing-your-first-android-app-in-assembly-30e8e0f8c3fe
 You can then run the program on the phone with Termux terminal app, e.g. After pushing the file into /data/local/tmp/ (see link above), you must copy the program to the Termux home directory (in Termux):
 
 ```
