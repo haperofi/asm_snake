@@ -26,17 +26,17 @@ random_seed: .word 0x1234	// updated from gettimeofday
 rw_buffer: .skip 100
 termios: .skip 100		// terminal input configs
 saved_termios: .skip 100
-delay_ticks: .word 230000000	// game speed
+delay_ticks: .word 800000000	// game speed
 .equ MAPXLEN, 14
 .equ MAPYLEN, 8
 
 .text
-.global main
+.global _start
 
 ///////////////////////////////////////////////
 ///////////////////  MAIN  ////////////////////
 ///////////////////////////////////////////////
-main:
+_start:
 	push {r4, lr}
 
 	bl save_termios
@@ -75,7 +75,10 @@ the_end:
 	ldr r0, =show_cursor
 	bl output
 	pop {r4, lr}
-	bx lr
+	
+	mov r0, #0		// exit status 0 (ok)
+    	mov r7, #1		// syscall 1 (exit)
+    	svc #0
 
 ///////////////////////////////////////////////////
 /////////////// END MAIN //////////////////////////
@@ -736,4 +739,3 @@ write_termios:
         pop {r7, lr}
         bx lr
 //////////////////////////////////////////
-
