@@ -26,7 +26,7 @@ random_seed: .word 0x1234	// updated from gettimeofday
 rw_buffer: .skip 100
 termios: .skip 100		// terminal input configs
 saved_termios: .skip 100
-delay_ticks: .word 800000000	// game speed
+delay_ticks: .word 800000000	// game speed for Samsung S10 -- for Raspberry Pi 3, use 230000000
 .equ MAPXLEN, 14
 .equ MAPYLEN, 8
 
